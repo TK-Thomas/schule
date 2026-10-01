@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Schule - Schulplaner</title>
+<meta name="theme-color" content="#0A0A0F"><link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png"><link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+body{background:#0A0A0F;color:#fff;font-family:Inter,system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.card{background:#1C1C22;border:1px solid #2A2A35;border-radius:16px}
+.lab{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8A8A9E;font-weight:600;display:block;margin-bottom:6px}
+.in{width:100%;background:#14141A;border:1px solid #2A2A35;border-radius:12px;padding:10px 12px;color:#fff;font-size:14px;color-scheme:dark}
+.btn{padding:8px 16px;border-radius:999px;background:#2A2A35;font-size:13px}
+.btn-w{padding:8px 16px;border-radius:999px;background:#fff;color:#000;font-size:13px;font-weight:600}
+.pill{font-size:11px;padding:2px 8px;border-radius:999px;background:#2A2A35;white-space:nowrap}
+input[type=checkbox]{accent-color:#fff;width:18px;height:18px;flex:none}
+.ck{width:22px;height:22px;border-radius:999px;border:2px solid #3A3A46;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#000}.ck.on{background:#fff;border-color:#fff}
+</style></head>
+<body><div id="app" class="max-w-3xl mx-auto px-4 py-5"></div>
+<script>
+const SB_URL='https://cawkplxktruzketsbhlj.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNhd2twbHhrdHJ1emtldHNiaGxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3ODg4MjcsImV4cCI6MjEwNjM2NDgyN30.83qWj_Dqtly5hKAMNqgO2hKIBBDvhyxCbMigokGzvGI';
+const VER='1.2';
+const DN=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'],DS=['So','Mo','Di','Mi','Do','Fr','Sa'],DAYS=['Mo','Di','Mi','Do','Fr'],DL=['Montag','Dienstag','Mittwoch','Donnerstag','Freitag'];
+const MN=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const DEF=['Mathematik','Deutsch','Englisch','Physik','Chemie','Biologie','Sport','Geschichte','Geographie','Informatik','Musik','Kunst','Religion','Französisch','Wirtschaft','P-Seminar','Politik und Gesellschaft'];
+const TC={schulaufgabe:'bg-red-500',test:'bg-amber-500',sonstiges:'bg-zinc-400',ferien:'bg-blue-500'};
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const p2=n=>String(n).padStart(2,'0'),uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6),cap=s=>s[0].toUpperCase()+s.slice(1);
+const iso=d=>d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()),pd=s=>{const[a,b,c]=s.split('-').map(Number);return new Date(a,b-1,c)};
+const add=(s,n)=>{const d=pd(s);d.setDate(d.getDate()+n);return iso(d)},DD=s=>{const d=pd(s);return p2(d.getDate())+'.'+p2(d.getMonth()+1)+'.'},fd=s=>s?DS[pd(s).getDay()]+'. '+DD(s):'–';
+const mon=s=>{const x=pd(s);x.setDate(x.getDate()-((x.getDay()+6)%7));return iso(x)};
+const ld=(k,f)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??f}catch(e){return f}};
+// ---- Defaults
+function dPlan(){const sp={Mo:'Mathematik;Mathematik;Deutsch;Deutsch;Geographie;Geographie;;Musik;Musik',Di:'Wirtschaft;Wirtschaft;Französisch;Französisch;Religion;Religion;;;',Mi:'Physik;Physik;Englisch;Englisch;Chemie;Chemie;;Informatik;Informatik',Do:'Sport;Sport;Deutsch;Physik;P-Seminar;P-Seminar;;;',Fr:'Politik und Gesellschaft;Politik und Gesellschaft;Mathematik;Englisch;Französisch;Geschichte;;;'};
+const R={Physik:'3_1_12',Chemie:'3_2_03',Musik:'3_0_05',Informatik:'4_0_03','P-Seminar':'4_0_03',Sport:'T3'},p={};
+for(const d in sp){p[d]={};sp[d].split(';').forEach((f,i)=>{if(f)p[d][i+1]={fach:f,raum:R[f]||'1_0_03'}})}return p}
+const dTimes=()=>{const t=['08:05','08:50','09:35','09:55','10:40','11:25','11:45','12:30','13:15'],e=['08:50','09:35','10:40','11:25','12:30','13:15','14:00','14:45','15:30'],s=['08:05','08:50','09:55','10:40','11:45','12:30','13:05','14:00','14:45'],o={};s.forEach((x,i)=>o[i+1]={start:x,end:e[i]});return o};
+const dFerien=()=>[['Herbstferien','2026-11-02','2026-11-06'],['Buß- und Bettag','2026-11-18','2026-11-18'],['Weihnachtsferien','2026-12-24','2027-01-08'],['Faschingsferien','2027-02-08','2027-02-12'],['Osterferien','2027-03-22','2027-04-02'],['Ostermontag','2027-04-05','2027-04-05'],['Christi Himmelfahrt','2027-05-06','2027-05-06'],['Pfingstmontag','2027-05-17','2027-05-17'],['Pfingstferien','2027-05-18','2027-05-28'],['Sommerferien','2027-08-02','2027-09-13']].map(([titel,von,bis])=>({titel,von,bis}));
+// ---- State
+let S={homeworks:ld('sp_homeworks',[]),grades:ld('sp_grades',[]),events:ld('sp_events',[]),subjectInfos:ld('sp_subjectInfos',{}),plan:ld('sp_timetable_plan',null)||dPlan(),times:ld('sp_timetable_times',null)||dTimes(),settings:ld('sp_settings',{}),ferien:ld('sp_ferien',null)||dFerien(),updatedAt:ld('sp_updatedAt',0)};
+let tab='hw',wk=false,wkS=mon(iso(new Date())),doneOpen=false,packed={},cal={y:new Date().getFullYear(),m:new Date().getMonth()},selD=iso(new Date()),sb=null,user=null,dirty=false;
+const LK={sp_homeworks:'homeworks',sp_grades:'grades',sp_events:'events',sp_subjectInfos:'subjectInfos',sp_timetable_plan:'plan',sp_timetable_times:'times',sp_settings:'settings',sp_ferien:'ferien',sp_updatedAt:'updatedAt'};
+const save=()=>{S.updatedAt=Date.now();for(const k in LK)localStorage.setItem(k,JSON.stringify(S[LK[k]]))};
+const commit=(r=true)=>{save();dirty=true;if(r)render()};
+const cloud=()=>({homeworks:S.homeworks,grades:S.grades,events:S.events,subjectInfos:S.subjectInfos,timetable:{plan:S.plan,times:S.times},settings:S.settings,ferien:S.ferien,updatedAt:S.updatedAt});
+// ---- Logik
+const inF=s=>S.ferien.some(f=>f.von&&f.von<=s&&s<=(f.bis||f.von)),sch=s=>{const w=pd(s).getDay();return w>=1&&w<=5&&!inF(s)};
+const nextSch=s=>{let x=add(s,1);for(let i=0;i<500&&!sch(x);i++)x=add(x,1);return x};
+const pday=s=>{const k=DAYS[pd(s).getDay()-1];return k?Object.entries(S.plan[k]||{}).filter(([i,x])=>x&&x.fach).map(([i,x])=>({i:+i,...x})).sort((a,b)=>a.i-b.i):[]};
+const nextLesson=(f,after)=>{let x=add(after,1);for(let i=0;i<500;i++,x=add(x,1))if(sch(x)&&pday(x).some(l=>l.fach==f))return x;return null};
+const grp=l=>{const r=[];l.forEach(x=>{const p=r[r.length-1];if(p&&p.fach==x.fach&&p.raum==x.raum&&p.n[p.n.length-1]==x.i-1)p.n.push(x.i);else r.push({fach:x.fach,raum:x.raum,n:[x.i]})});return r};
+const subj=()=>[...new Set([...Object.values(S.plan).flatMap(d=>Object.values(d).map(x=>x.fach)),...Object.keys(S.subjectInfos),...DEF])].filter(Boolean).sort();
+function tgt(){const n=new Date(),t=iso(n),w=n.getDay(),m=n.getHours()*60+n.getMinutes(),cut=(w==1||w==3)?930:785;return sch(t)&&m<cut?t:nextSch(t)}
+// ---- UI helpers
+const fl=(l,i)=>`<label class="block"><span class="lab">${l}</span>${i}</label>`;
+const inp=(n,v,t='text',x='')=>`<input name="${n}" type="${t}" value="${esc(v)}" ${x} class="in">`;
+const sel=(n,o,v,ph)=>`<select name="${n}" class="in">${ph?`<option value="">${ph}</option>`:''}${o.map(x=>`<option ${x==v?'selected':''}>${esc(x)}</option>`).join('')}</select>`;
+const g=(o,n)=>o.querySelector(`[name=${n}]`).value.trim();
+function dlg(title,body,onSave,onDel){const o=document.createElement('div');o.className='fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-4';
+o.innerHTML=`<div class="card w-full max-w-md p-5 max-h-[90vh] overflow-auto"><h3 class="font-semibold text-lg mb-4">${title}</h3><div class="space-y-4">${body}</div><div class="flex gap-2 mt-5">${onDel?'<button id="dd" class="btn text-red-400">Löschen</button>':''}<span class="flex-1"></span><button id="dc" class="btn">Abbrechen</button><button id="ds" class="btn-w">Speichern</button></div></div>`;
+document.body.append(o);const c=()=>o.remove();o.querySelector('#dc').onclick=c;o.onclick=e=>{if(e.target===o)c()};o.querySelector('#ds').onclick=()=>{if(onSave(o)!==false)c()};if(onDel)o.querySelector('#dd').onclick=()=>{onDel();c()};return o}
+// ---- Dialoge
+function hwDlg(h){const n=!h;h=h||{id:uid(),fach:'',titel:'',mitbringen:'',due:'',done:false,created:iso(new Date())};let manual=!n;
+const o=dlg(n?'Neue Hausaufgabe':'Hausaufgabe bearbeiten',fl('Fach',sel('fach',subj(),h.fach,'Fach wählen'))+fl('Aufgabe',inp('titel',h.titel))+fl('Mitbringen',inp('mb',h.mitbringen))+fl('Fällig am',inp('due',h.due,'date')),o=>{
+if(!g(o,'fach')||!g(o,'titel'))return false;Object.assign(h,{fach:g(o,'fach'),titel:g(o,'titel'),mitbringen:g(o,'mb'),due:g(o,'due')||iso(new Date())});if(n)S.homeworks.push(h);commit()},n?null:()=>{S.homeworks=S.homeworks.filter(x=>x.id!=h.id);commit()});
+const due=o.querySelector('[name=due]');due.oninput=()=>manual=true;
+o.querySelector('[name=fach]').onchange=e=>{if(manual)return;const t=iso(new Date()),nl=nextLesson(e.target.value,t);if(nl){const d=add(nl,-1);due.value=d<t?t:d}}}
+function cellDlg(d,i){const c=S.plan[d]?.[i]||{},inf=S.subjectInfos[c.fach]||{};
+dlg(`${DL[DAYS.indexOf(d)]}, ${i}. Stunde`,fl('Fach',sel('fach',subj(),c.fach,'— leer —'))+fl('Oder neues Fach',inp('neu',''))+fl('Raum',inp('raum',c.raum||''))+fl('Lehrer:in',inp('lehrer',inf.lehrer||''))+fl('Hinweis (Packliste)',inp('hinweis',inf.hinweis||'')),o=>{
+const f=g(o,'neu')||g(o,'fach');S.plan[d]=S.plan[d]||{};if(!f)delete S.plan[d][i];else{S.plan[d][i]={fach:f,raum:g(o,'raum')};S.subjectInfos[f]={...S.subjectInfos[f],lehrer:g(o,'lehrer'),hinweis:g(o,'hinweis')}}commit()})}
+function grDlg(x){const n=!x;x=x||{id:uid(),fach:'',wert:'',gew:1,art:'mündlich',datum:iso(new Date()),notiz:''};
+dlg(n?'Neue Note':'Note bearbeiten',fl('Fach',sel('fach',subj(),x.fach,'Fach wählen'))+fl('Note (1–6)',inp('wert',x.wert,'number','min=1 max=6 step=0.5'))+fl('Gewicht',sel('gew',['1x','2x'],x.gew+'x'))+fl('Art',sel('art',['mündlich','schriftlich','Schulaufgabe','Stegreif','Ex'],x.art))+fl('Datum',inp('datum',x.datum,'date'))+fl('Notiz',inp('notiz',x.notiz)),o=>{
+const w=parseFloat(g(o,'wert'));if(!g(o,'fach')||isNaN(w))return false;Object.assign(x,{fach:g(o,'fach'),wert:Math.min(6,Math.max(1,w)),gew:parseInt(g(o,'gew')),art:g(o,'art'),datum:g(o,'datum'),notiz:g(o,'notiz')});if(n)S.grades.push(x);commit()},n?null:()=>{S.grades=S.grades.filter(y=>y.id!=x.id);commit()})}
+function evDlg(x,date){const n=!x;x=x||{id:uid(),titel:'',date:date||iso(new Date()),fach:'',typ:'sonstiges',notiz:''};
+dlg(n?'Neuer Termin':'Termin bearbeiten',fl('Titel',inp('titel',x.titel))+fl('Datum',inp('date',x.date,'date'))+fl('Fach (optional)',sel('fach',subj(),x.fach,'—'))+fl('Typ',sel('typ',['Schulaufgabe','Test','Sonstiges','Ferien'],cap(x.typ)))+fl('Notiz',`<textarea name="notiz" rows="3" class="in">${esc(x.notiz)}</textarea>`),o=>{
+if(!g(o,'titel')||!g(o,'date'))return false;Object.assign(x,{titel:g(o,'titel'),date:g(o,'date'),fach:g(o,'fach'),typ:g(o,'typ').toLowerCase(),notiz:g(o,'notiz')});if(n)S.events.push(x);selD=x.date;commit()},n?null:()=>{S.events=S.events.filter(y=>y.id!=x.id);commit()})}
+// ---- Views
+const ck=on=>`<span class="ck ${on?'on':''}">${on?'✓':''}</span>`;
+const dd=s=>Math.round((pd(s)-pd(iso(new Date())))/864e5);
+function dcol(s){const t=Math.min(1,Math.max(0,(dd(s)-1)/5)),a=[255,107,91],b=[138,138,158];return `rgb(${a.map((v,i)=>Math.round(v+(b[i]-v)*t)).join(',')})`}
+function dlab(s){if(!s)return '–';const d=dd(s);return (d<0?'überfällig, ':d==0?'heute, ':d==1?'morgen, ':d==2?'übermorgen, ':'')+fd(s)}
+function cfm(t,x,y){const o=document.createElement('div');o.className='fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4';o.innerHTML=`<div class="card w-full max-w-sm p-5"><h3 class="font-semibold mb-2">${t}</h3><p class="text-sm text-[#8A8A9E] mb-5">${esc(x)}</p><div class="flex justify-end gap-2"><button id="no" class="btn">Abbrechen</button><button id="ja" class="btn-w" style="background:#EF4444;color:#fff">Löschen</button></div></div>`;document.body.append(o);o.querySelector('#no').onclick=()=>o.remove();o.querySelector('#ja').onclick=()=>{o.remove();y()}}
+const hwRow=h=>`<div class="flex items-start gap-3 px-4 py-3 border-t border-[#2A2A35] first:border-0"><button data-a="tg" data-i="${h.id}" class="mt-0.5">${ck(h.done)}</button><div data-a="ehw" data-i="${h.id}" class="flex-1 min-w-0 cursor-pointer"><div class="flex items-center gap-2 flex-wrap"><span class="pill" style="background:#262A45;color:#B8BFFF">${esc(h.fach)}</span><span class="text-xs font-semibold" style="color:${h.done?'#8A8A9E':dcol(h.due)}">${dlab(h.due)}</span></div><div class="text-sm mt-1.5 ${h.done?'line-through text-zinc-500':''}">${esc(h.titel)}</div>${h.mitbringen?`<div class="text-xs text-[#8A8A9E] mt-1">🎒 ${esc(h.mitbringen)}</div>`:''}</div><button data-a="dx" data-i="${h.id}" class="w-8 h-8 rounded-full bg-[#2A2A35] text-[#8A8A9E] flex-none">✕</button></div>`;
+function vPack(){const t=tgt(),td=iso(new Date()),n=new Date(),d=pd(t),lab=t==td?'heute':t==add(td,1)?'morgen':'';
+const head=lab?`Für ${lab} (${DN[d.getDay()]}, ${DD(t)}) packen:`:`Für ${DN[d.getDay()]}, ${DD(t)} packen:`,it=[];
+if(t!=td&&(n.getDay()==0||n.getDay()==2))it.push(['','Geld']);
+[...new Set(pday(t).map(x=>x.fach))].forEach(f=>{const h=S.subjectInfos[f]?.hinweis;if(h)it.push([f,h])});
+S.homeworks.forEach(h=>{if(!h.done&&h.mitbringen&&nextLesson(h.fach,h.created)==t)it.push([h.fach,h.mitbringen])});
+const c=it.filter((x,i)=>packed[t+i]).length;
+return `<div class="card p-4 mb-5"><div class="lab mb-3">${head}</div><div class="text-sm mb-2"><b>Mitbringen:</b> ${it.length?'':'<span class="text-[#8A8A9E]">Nichts besonderes</span>'}</div>
+${it.map((x,i)=>`<button data-a="pk" data-i="${t+i}" class="flex items-center gap-2 text-sm py-1 text-left w-full">${ck(packed[t+i])}<span>${x[0]?`<b>${esc(x[0])}:</b> `:''}<span class="text-zinc-300">${esc(x[1])}</span></span></button>`).join('')}
+<div class="mt-3 space-y-1 text-sm">${grp(pday(t)).map(q=>`<div class="text-[#8A8A9E]">${q.n.map(k=>k+'.').join('/')} <b class="text-white">${esc(q.fach)}</b> (${esc(q.raum||'')})</div>`).join('')||'<div class="text-[#8A8A9E]">Kein Unterricht</div>'}</div>
+${it.length?`<div class="mt-3 inline-block text-xs px-3 py-1.5 rounded-full bg-[#1A2E1A] border border-[#2A4A2A] text-[#7AC47A]">Bereit zum Packen • ${c}/${it.length} gepackt</div>`:''}</div>`}
+function vHw(){const td=iso(new Date()),past=S.homeworks.filter(h=>h.due&&h.due<td),op=S.homeworks.filter(h=>!h.done).sort((a,b)=>a.due.localeCompare(b.due)),dn=S.homeworks.filter(h=>h.done).sort((a,b)=>b.due.localeCompare(a.due));
+let b=`<div class="flex items-center justify-between mb-4"><span class="font-semibold">Offen <span class="text-zinc-500">|</span> ${op.length}</span><div class="flex gap-2 items-center"><div class="flex rounded-full bg-[#14141A] border border-[#2A2A35] p-0.5 text-xs">${[['Liste',0],['Woche',1]].map(([l,v])=>`<button data-a="wk" data-i="${v}" class="px-3 py-1.5 rounded-full ${wk==!!v?'bg-white text-black font-semibold':'text-[#8A8A9E]'}">${l}</button>`).join('')}</div><button data-a="nhw" class="btn-w">＋ Hausaufgabe</button></div></div>`;
+if(!wk){b+=`<div class="card mb-5">${op.length?op.map(hwRow).join(''):'<div class="py-12 text-center text-sm text-[#8A8A9E]">Alles erledigt ✓</div>'}</div>
+<div class="flex items-center justify-between mb-3"><button data-a="dn" class="text-sm text-[#8A8A9E]">Erledigt <span>|</span> ${dn.length} ${doneOpen?'⌃':'⌄'}</button><button data-a="dp" class="btn text-xs ${dn.length?'text-red-400':'opacity-40'}">Erledigte löschen (${dn.length})</button></div>${doneOpen?`<div class="card">${dn.map(hwRow).join('')||'<div class="py-6 text-center text-sm text-[#8A8A9E]">Nichts erledigt</div>'}</div>`:''}`}
+else{const ds=[0,1,2,3,4].map(k=>add(wkS,k));b+=`<div class="flex items-center justify-between mb-3"><button data-a="wn" data-i="-7" class="btn">‹</button><span class="text-sm">${DD(ds[0])} – ${DD(ds[4])}</span><button data-a="wn" data-i="7" class="btn">›</button></div>`+ds.map(s=>{const l=S.homeworks.filter(h=>h.due==s);return `<div class="card mb-3"><div class="px-4 py-2 text-xs ${s==td?'text-white font-semibold':'text-[#8A8A9E]'}">${DN[pd(s).getDay()]}, ${DD(s)}${inF(s)?' • frei':''}</div>${l.map(hwRow).join('')||'<div class="px-4 pb-3 text-xs text-zinc-600">—</div>'}</div>`}).join('')}
+return vPack()+b}
+function vTt(){const today=DAYS[new Date().getDay()-1];let h=`<div class="card overflow-x-auto"><div class="grid text-center text-[13px]" style="grid-template-columns:60px repeat(5,1fr);min-width:620px"><div></div>${DL.map((d,i)=>`<div class="py-3 font-semibold ${DAYS[i]==today?'bg-[#151B33]':''}">${d}</div>`).join('')}`;
+for(let i=1;i<=9;i++){const t=S.times[i]||{};h+=`<div class="p-2 text-left border-t border-[#2A2A35]"><b class="text-sm">${i}.</b><div class="text-[10px] text-[#8A8A9E] leading-tight">${t.start||''}<br>${t.end||''}</div></div>`;
+if(i==7){h+=`<div class="col-span-5 border-t border-[#2A2A35] flex items-center justify-center text-[#8A8A9E] text-xs">Mittagspause • ${t.start}-${t.end}</div>`;continue}
+DAYS.forEach(d=>{const c=S.plan[d]?.[i];h+=`<button data-a="cell" data-i="${d}|${i}" class="border-t border-l border-[#2A2A35] p-2 min-h-[56px] ${d==today?'bg-[#151B33]':''}">${c?.fach?`<b class="block">${esc(c.fach)}</b><span class="text-[11px] text-[#8A8A9E]">${esc(c.raum||'')}</span>`:'<span class="text-zinc-600">—</span>'}</button>`})}
+return h+'</div></div>'}
+function vGr(){const by={};S.grades.forEach(x=>(by[x.fach]=by[x.fach]||[]).push(x));
+const f=v=>v.toFixed(2).replace('.',','),n=x=>String(x).replace('.',',');
+return `<div class="flex items-center justify-between mb-4"><span class="font-semibold">Noten</span><button data-a="ngr" class="btn-w">＋ Note</button></div>`+(Object.keys(by).length?Object.keys(by).sort().map(k=>{const l=by[k].sort((a,b)=>b.datum.localeCompare(a.datum)),sw=l.reduce((s,x)=>s+x.gew,0),avg=l.reduce((s,x)=>s+x.wert*x.gew,0)/sw;
+return `<div class="card mb-3"><div class="flex justify-between px-4 py-3"><b>${esc(k)}</b><span class="text-sm text-[#8A8A9E]">Ø <b class="text-white">${f(avg)}</b></span></div>${l.map(x=>`<button data-a="egr" data-i="${x.id}" class="w-full flex items-center gap-3 px-4 py-2 border-t border-[#2A2A35] text-sm text-left"><b class="w-8">${n(x.wert)}</b><span class="flex-1 text-[#8A8A9E]">${esc(x.art)} • ${x.gew}x${x.notiz?' • '+esc(x.notiz):''}</span><span class="text-xs text-[#8A8A9E]">${fd(x.datum)}</span></button>`).join('')}</div>`}).join(''):'<div class="card py-12 text-center text-sm text-[#8A8A9E]">Noch keine Noten</div>')}
+function vEv(){const{y,m}=cal,td=iso(new Date()),first=new Date(y,m,1),last=new Date(y,m+1,0),s=new Date(first);s.setDate(1-((first.getDay()+6)%7));const rows=[];
+for(let d=new Date(s);d<=last;d.setDate(d.getDate()+7)){const c=[];for(let k=0;k<5;k++){const x=new Date(d);x.setDate(d.getDate()+k);c.push(x)}rows.push(c)}
+const cell=x=>{const s=iso(x),dots=S.events.filter(e=>e.date==s).map(e=>TC[e.typ]||TC.sonstiges);if(inF(s))dots.push('bg-blue-500');if(S.homeworks.some(h=>h.due==s&&!h.done))dots.push('bg-zinc-500');
+return `<button data-a="day" data-i="${s}" class="h-16 p-1.5 rounded-xl border flex flex-col justify-between items-end ${selD==s?'border-white':'border-[#2A2A35]'} ${x.getMonth()!=m?'opacity-30':''} ${s==td?'bg-[#151B33]':'bg-[#1C1C22]'}"><span class="text-xs">${x.getDate()}</span><span class="flex gap-1 flex-wrap justify-end">${dots.slice(0,4).map(c=>`<i class="w-1.5 h-1.5 rounded-full ${c}"></i>`).join('')}</span></button>`};
+const ev=S.events.filter(e=>e.date==selD),hs=S.homeworks.filter(h=>h.due==selD),fe=S.ferien.filter(f=>f.von<=selD&&selD<=(f.bis||f.von));
+return `<div class="flex items-center justify-between mb-4"><div class="flex items-center gap-3"><button data-a="cm" data-i="-1" class="btn">‹</button><span class="font-semibold w-36 text-center">${MN[m]} ${y}</span><button data-a="cm" data-i="1" class="btn">›</button></div><button data-a="nev" data-i="${selD}" class="btn-w">＋ Termin</button></div>
+<div class="grid grid-cols-5 gap-1.5 text-center text-xs text-[#8A8A9E] mb-1.5">${DAYS.map(d=>`<div>${d}</div>`).join('')}</div><div class="grid grid-cols-5 gap-1.5 mb-5">${rows.flat().map(cell).join('')}</div>
+<div class="card p-4"><div class="lab">${DN[pd(selD).getDay()]}, ${DD(selD)}</div>${fe.map(f=>`<div class="text-sm py-1 text-blue-400">${esc(f.titel)}</div>`).join('')}${ev.map(e=>`<button data-a="eev" data-i="${e.id}" class="w-full text-left text-sm py-1.5 flex items-center gap-2"><i class="w-2 h-2 rounded-full ${TC[e.typ]}"></i><b>${esc(e.titel)}</b><span class="text-[#8A8A9E]">${cap(e.typ)}${e.fach?' • '+esc(e.fach):''}</span></button>`).join('')}${hs.map(h=>`<div class="text-sm py-1.5 text-[#8A8A9E]">HA fällig: ${esc(h.fach)} – ${esc(h.titel)}</div>`).join('')}${ev.length+hs.length+fe.length?'':'<div class="text-sm text-[#8A8A9E]">Keine Termine</div>'}</div>`}
+function vSt(){const ti=()=>{let h='';for(let i=1;i<=9;i++){const t=S.times[i]||{};h+=`<div class="flex items-center gap-2 mb-2"><b class="w-6 text-sm">${i}.</b><input type="time" class="in" data-c="tm|${i}|start" value="${t.start||''}"><input type="time" class="in" data-c="tm|${i}|end" value="${t.end||''}"></div>`}return h};
+return `<div class="card p-4 mb-4"><div class="lab">Zeiten (7. = Mittagspause)</div>${ti()}</div>
+<div class="card p-4 mb-4"><div class="lab">Fächer-Infos</div>${subj().filter(f=>Object.values(S.plan).some(d=>Object.values(d).some(x=>x.fach==f))||S.subjectInfos[f]).map(f=>`<div class="mb-3"><b class="text-sm">${esc(f)}</b><div class="grid grid-cols-2 gap-2 mt-1"><input class="in" placeholder="Lehrer:in" data-c="si|${esc(f)}|lehrer" value="${esc(S.subjectInfos[f]?.lehrer)}"><input class="in" placeholder="Hinweis (Packliste)" data-c="si|${esc(f)}|hinweis" value="${esc(S.subjectInfos[f]?.hinweis)}"></div></div>`).join('')}</div>
+<div class="card p-4 mb-4"><div class="lab">Ferien &amp; freie Tage</div>${S.ferien.map((f,i)=>`<div class="mb-3 grid grid-cols-[1fr_auto] gap-2"><input class="in" placeholder="Titel" data-c="fe|${i}|titel" value="${esc(f.titel)}"><button data-a="fx" data-i="${i}" class="btn text-red-400">✕</button><div class="grid grid-cols-2 gap-2 col-span-2"><input type="date" class="in" data-c="fe|${i}|von" value="${f.von}"><input type="date" class="in" data-c="fe|${i}|bis" value="${f.bis}"></div></div>`).join('')}<button data-a="fa" class="btn">＋ Ferien</button></div>
+<div class="card p-4 mb-4"><div class="lab">Backup</div><button data-a="pdf" class="btn-w">Wochenübersicht als PDF</button></div>
+<div class="card p-4 mb-4"><div class="lab">Konto / Sync</div>${user?`<p class="text-sm mb-3">Eingeloggt als ${esc(user.email)}</p><button data-a="lo" class="btn">Logout</button>`:`<input id="em" type="email" placeholder="E-Mail" class="in mb-2"><input id="pw" type="password" placeholder="Passwort" class="in mb-3"><button data-a="li" class="btn-w">Login</button>`}</div><p class="text-xs text-zinc-600 text-center">Schulplaner v${VER}</p>`}
+function render(){const n=new Date();$('#app').innerHTML=`<div class="flex items-center justify-between gap-3 mb-5"><div class="flex gap-1 p-1 rounded-full bg-[#14141A] border border-[#2A2A35] overflow-x-auto">${[['hw','Hausaufgaben'],['tt','Stundenplan'],['gr','Noten'],['ev','Termine']].map(([k,l])=>`<button data-a="tab" data-i="${k}" class="px-4 py-2 rounded-full text-[13px] whitespace-nowrap ${tab==k?'bg-white text-black font-semibold':'text-[#8A8A9E]'}">${l}</button>`).join('')}</div><div class="flex items-center gap-3 shrink-0"><span class="text-[13px] text-[#8A8A9E] hidden sm:inline">${DN[n.getDay()]}, ${DD(iso(n))}</span><button data-a="tab" data-i="st" class="relative w-8 h-8 rounded-full bg-white text-black text-sm font-bold">T<span class="absolute -right-0.5 -bottom-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0A0A0F] ${user?'bg-green-500':'bg-zinc-500'}"></span></button><button data-a="tab" data-i="st" class="w-8 h-8 rounded-full ${tab=='st'?'bg-white text-black':'bg-[#1C1C22] text-[#8A8A9E]'} border border-[#2A2A35]">⚙</button></div></div>`+({hw:vHw,tt:vTt,gr:vGr,ev:vEv,st:vSt}[tab])()}
+// ---- Events
+document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,i=b.dataset.i;
+if(a=='tab'){tab=i;render()}else if(a=='nhw')hwDlg();else if(a=='ehw')hwDlg(S.homeworks.find(h=>h.id==i));
+else if(a=='tg'){const h=S.homeworks.find(x=>x.id==i);h.done=!h.done;h.doneAt=h.done?iso(new Date()):'';commit()}
+else if(a=='dn'){doneOpen=!doneOpen;render()}else if(a=='wk'){wk=i=='1';render()}else if(a=='wn'){wkS=add(wkS,+i);render()}
+else if(a=='pk'){packed[i]=!packed[i];render()}else if(a=='cell')cellDlg(...i.split('|'));
+else if(a=='ngr')grDlg();else if(a=='egr')grDlg(S.grades.find(x=>x.id==i));else if(a=='nev')evDlg(null,i);else if(a=='eev')evDlg(S.events.find(x=>x.id==i));
+else if(a=='cm'){cal.m+=+i;if(cal.m<0){cal.m=11;cal.y--}if(cal.m>11){cal.m=0;cal.y++}render()}else if(a=='day'){selD=i;render()}
+else if(a=='dx'){const x=S.homeworks.find(q=>q.id==i);cfm('Hausaufgabe löschen?',`${x.fach}: ${x.titel}`,()=>{S.homeworks=S.homeworks.filter(q=>q.id!=i);commit()})}
+else if(a=='dp'){const n=S.homeworks.filter(q=>q.done).length;if(n)cfm('Erledigte löschen?',`${n} erledigte Hausaufgabe(n) werden gelöscht. Offene bleiben erhalten.`,()=>{S.homeworks=S.homeworks.filter(q=>!q.done);commit()})}
+else if(a=='li')login();else if(a=='lo')sb.auth.signOut();else if(a=='fa'){S.ferien.push({titel:'',von:'',bis:''});commit()}else if(a=='fx'){S.ferien.splice(+i,1);commit()}else if(a=='pdf')pdf()});
+document.addEventListener('change',e=>{const c=e.target.dataset.c;if(!c)return;const[k,a,b]=c.split('|'),v=e.target.value;
+if(k=='tm')S.times[a]={...S.times[a],[b]:v};else if(k=='si')S.subjectInfos[a]={...S.subjectInfos[a],[b]:v};else if(k=='fe')S.ferien[a][b]=v;commit(false)});
+// ---- PDF (manuell)
+function pdf(){if(!window.jspdf)return alert('PDF-Bibliothek nicht geladen (offline?)');const{jsPDF}=window.jspdf,D=new jsPDF(),ms=mon(iso(new Date())),fr=add(ms,4),su=add(ms,6),m=pd(ms),t=new Date(Date.UTC(m.getFullYear(),m.getMonth(),m.getDate()+3)),yr=t.getUTCFullYear(),kw=Math.ceil(((t-Date.UTC(yr,0,1))/864e5+1)/7);let y=20;
+const L=(x,b,z)=>{D.setFont('helvetica',b?'bold':'normal');D.setFontSize(z||10);D.splitTextToSize(String(x).replace(/[^\u0000-\u00FF]/g,''),180).forEach(l=>{if(y>280){D.addPage();y=20}D.text(l,14,y);y+=6})};
+const ins=(s,a,b)=>s>=a&&s<=b;
+L(`Schulplaner - Wochenübersicht KW${kw} (${DD(ms)}-${DD(fr)}${yr})`,1,15);y+=4;
+L('Erledigte Aufgaben',1,12);S.homeworks.filter(h=>h.done&&h.doneAt&&ins(h.doneAt,ms,su)).forEach(h=>L(`- ${h.fach}: ${h.titel}`));y+=3;
+L('Offene Aufgaben',1,12);S.homeworks.filter(h=>!h.done).sort((a,b)=>a.due.localeCompare(b.due)).forEach(h=>L(`- ${h.fach}: ${h.titel} (fällig ${fd(h.due)})`));y+=3;
+L('Noten diese Woche',1,12);S.grades.filter(x=>ins(x.datum,ms,su)).forEach(x=>L(`- ${x.fach}: ${x.wert} (${x.art}, ${x.gew}x)`));y+=3;
+L('Termine nächste Woche',1,12);S.events.filter(x=>ins(x.date,add(ms,7),add(ms,13))).sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>L(`- ${fd(x.date)} ${x.titel} (${cap(x.typ)})`));
+D.save(`Wochenübersicht_${yr}-W${p2(kw)}.pdf`)}
+// ---- Supabase
+function merge(c){const t=c.timetable||{},m={homeworks:c.homeworks,grades:c.grades,events:c.events,subjectInfos:c.subjectInfos,plan:t.plan,times:t.times,settings:c.settings,ferien:c.ferien},emp=v=>v==null||(Array.isArray(v)?!v.length:!Object.keys(v).length);
+if((c.updatedAt||0)>S.updatedAt){for(const k in m)if(!emp(m[k])||emp(S[k]))S[k]=m[k]??S[k];S.updatedAt=c.updatedAt;for(const k in LK)localStorage.setItem(k,JSON.stringify(S[LK[k]]))}else dirty=true}
+async function pull(){const{data,error}=await sb.from('schulplaner_data').select('data').eq('user_id',user.id).maybeSingle();if(error)return;if(data?.data?.updatedAt)merge(data.data);else dirty=true;render();push()}
+async function push(){if(!sb||!user||!dirty)return;dirty=false;const{error}=await sb.from('schulplaner_data').upsert({user_id:user.id,data:cloud(),updated_at:new Date().toISOString()});if(error)dirty=true}
+async function login(){if(!sb)return alert('Sync nicht verfügbar (offline?)');const{error}=await sb.auth.signInWithPassword({email:$('#em').value.trim(),password:$('#pw').value});if(error)alert('Login fehlgeschlagen: '+error.message)}
+function initSb(){if(!window.supabase)return;sb=supabase.createClient(SB_URL,SB_KEY);sb.auth.onAuthStateChange((ev,s)=>{user=s?.user||null;setTimeout(()=>{if(user&&ev!='TOKEN_REFRESHED')pull();else render()},0)});setInterval(push,10000);document.addEventListener('visibilitychange',()=>{if(document.hidden)push()});addEventListener('beforeunload',push)}
+render();initSb();setInterval(()=>{if(tab=='hw'&&!document.querySelector('.fixed'))render()},60000);
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+</script></body></html>
