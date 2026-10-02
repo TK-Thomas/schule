@@ -24,7 +24,7 @@ input[type=checkbox]{accent-color:#fff;width:18px;height:18px;flex:none}
 <body><div id="app" class="max-w-3xl mx-auto px-4 py-5"></div>
 <script>
 const SB_URL='https://cawkplxktruzketsbhlj.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNhd2twbHhrdHJ1emtldHNiaGxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3ODg4MjcsImV4cCI6MjEwNjM2NDgyN30.83qWj_Dqtly5hKAMNqgO2hKIBBDvhyxCbMigokGzvGI';
-const VER='1.3',VAPID='BB9FF0vjKxXZKfPfKBeEer9OiyfJhhE7pHaDwgHuZVDdzd7tOgRXi6H-LuEUy2qwOi0HmkW58AKktaThVaufklQ';
+const VER='1.5',VAPID='BB9FF0vjKxXZKfPfKBeEer9OiyfJhhE7pHaDwgHuZVDdzd7tOgRXi6H-LuEUy2qwOi0HmkW58AKktaThVaufklQ';
 const DN=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'],DS=['So','Mo','Di','Mi','Do','Fr','Sa'],DAYS=['Mo','Di','Mi','Do','Fr'],DL=['Montag','Dienstag','Mittwoch','Donnerstag','Freitag'];
 const MN=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 const DEF=['Mathematik','Deutsch','Englisch','Physik','Chemie','Biologie','Sport','Geschichte','Geographie','Informatik','Musik','Kunst','Religion','Französisch','Wirtschaft','P-Seminar','Politik und Gesellschaft'];
@@ -159,12 +159,16 @@ const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubsc
 const{error}=await sb.from('push_subs').upsert({endpoint:sub.endpoint,user_id:user.id,sub:sub.toJSON()});alert(error?'Fehler: '+error.message:'Benachrichtigungen sind auf diesem Gerät aktiv ✓')}catch(e){alert('Fehler: '+e.message)}}
 async function disablePush(){try{const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription();if(sub){if(sb&&user)await sb.from('push_subs').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}alert('Benachrichtigungen auf diesem Gerät ausgeschaltet.')}catch(e){alert('Fehler: '+e.message)}}
 // ---- Supabase
-function merge(c){const t=c.timetable||{},m={homeworks:c.homeworks,grades:c.grades,events:c.events,subjectInfos:c.subjectInfos,plan:t.plan,times:t.times,settings:c.settings,ferien:c.ferien},emp=v=>v==null||(Array.isArray(v)?!v.length:!Object.keys(v).length);
-if((c.updatedAt||0)>S.updatedAt){for(const k in m)if(!emp(m[k])||emp(S[k]))S[k]=m[k]??S[k];S.updatedAt=c.updatedAt;for(const k in LK)localStorage.setItem(k,JSON.stringify(S[LK[k]]))}else dirty=true}
-async function pull(){const{data,error}=await sb.from('schulplaner_data').select('data').eq('user_id',user.id).maybeSingle();if(error)return;if(data?.data?.updatedAt)merge(data.data);else dirty=true;render();push()}
+function merge(c){const t=c.timetable||{},m={homeworks:c.homeworks,grades:c.grades,events:c.events,subjectInfos:c.subjectInfos,plan:t.plan,times:t.times,settings:c.settings,ferien:c.ferien},cu=c.updatedAt||0;
+if(cu>S.updatedAt){for(const k in m)if(m[k]!=null)S[k]=m[k];S.updatedAt=cu;for(const k in LK)localStorage.setItem(k,JSON.stringify(S[LK[k]]));return true}
+if(cu<S.updatedAt)dirty=true;return false}
+async function pull(force){const{data,error}=await sb.from('schulplaner_data').select('data').eq('user_id',user.id).maybeSingle();if(error)return;let ch=false;const first=localStorage.getItem('sp_lastUser')!==user.id;
+if(data?.data?.updatedAt){if(first){try{localStorage.setItem('sp_backup_local',JSON.stringify({at:Date.now(),d:cloud()}))}catch(e){}S.updatedAt=0}ch=merge(data.data)}else dirty=true;
+localStorage.setItem('sp_lastUser',user.id);if(ch||force)render();push()}
+async function sync(){if(!sb||!user)return;await push();await pull()}
 async function push(){if(!sb||!user||!dirty)return;dirty=false;const{error}=await sb.from('schulplaner_data').upsert({user_id:user.id,data:cloud(),updated_at:new Date().toISOString()});if(error)dirty=true}
 async function login(){if(!sb)return alert('Sync nicht verfügbar (offline?)');const{error}=await sb.auth.signInWithPassword({email:$('#em').value.trim(),password:$('#pw').value});if(error)alert('Login fehlgeschlagen: '+error.message)}
-function initSb(){if(!window.supabase)return;sb=supabase.createClient(SB_URL,SB_KEY);sb.auth.onAuthStateChange((ev,s)=>{user=s?.user||null;setTimeout(()=>{if(user&&ev!='TOKEN_REFRESHED')pull();else render()},0)});setInterval(push,10000);document.addEventListener('visibilitychange',()=>{if(document.hidden)push()});addEventListener('beforeunload',push)}
+function initSb(){if(!window.supabase)return;sb=supabase.createClient(SB_URL,SB_KEY);sb.auth.onAuthStateChange((ev,s)=>{user=s?.user||null;setTimeout(()=>{if(user&&ev!='TOKEN_REFRESHED')pull(true);else render()},0)});setInterval(push,10000);document.addEventListener('visibilitychange',()=>{if(document.hidden)push();else sync()});setInterval(()=>{if(!document.hidden)sync()},30000);addEventListener('beforeunload',push)}
 render();initSb();setInterval(()=>{if(tab=='hw'&&!document.querySelector('.fixed'))render()},60000);
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 </script></body></html>
